@@ -42,7 +42,7 @@ class HiveMetastoreCatalog(hive: HiveContext) extends Catalog with Logging {
 
   val client = Hive.get(hive.hiveconf)
 
-  def lookupRelation(
+  override def lookupRelation(
       db: Option[String],
       tableName: String,
       alias: Option[String]): LogicalPlan = {
@@ -60,6 +60,34 @@ class HiveMetastoreCatalog(hive: HiveContext) extends Catalog with Logging {
       databaseName.toLowerCase,
       tableName.toLowerCase,
       alias)(table.getTTable, partitions.map(part => part.getTPartition))
+  }
+
+  def unregisterTableFromMetastore(databaseName: Option[String], tableName: String) = {
+    logger.debug(s"Deleting table $tableName")
+    val dbName: String =
+      // OverrideCatalog will pass "None" as the databaseName
+      if (databaseName.isDefined && databaseName.get == "None") "default"
+      else databaseName.getOrElse("default")
+    val table = client.getTable(dbName, tableName)
+
+    client.getIndexes(dbName, tableName, 255).foreach { index =>
+      client.dropIndex(dbName, tableName, index.getIndexName, true)
+    }
+
+    if (!table.isIndexTable) {
+      client.dropTable(dbName, tableName)
+    }
+  }
+
+  def unregisterAllTablesFromMetastore() = {
+    client.getAllTables("default").foreach { t =>
+      unregisterTable(Some("default"), t)
+    }
+
+    client.getAllDatabases.filterNot(_ == "default").foreach { db =>
+      logger.debug(s"Dropping Database: $db")
+      client.dropDatabase(db, true, false, true)
+    }
   }
 
   def createTable(databaseName: String, tableName: String, schema: Seq[Attribute]) {
@@ -147,7 +175,17 @@ class HiveMetastoreCatalog(hive: HiveContext) extends Catalog with Logging {
    * For now, if this functionality is desired mix in the in-memory [[OverrideCatalog]].
    */
   override def unregisterTable(
-      databaseName: Option[String], tableName: String): Unit = ???
+      databaseName: Option[String], tableName: String): Unit = {
+    unregisterTableFromMetastore(databaseName, tableName)
+  }
+
+  /**
+   * UNIMPLEMENTED: It needs to be decided how we will persist in-memory tables to the metastore.
+   * For now, if this functionality is desired mix in the in-memory [[OverrideCatalog]].
+   */
+  override def unregisterAllTables(): Unit = {
+    unregisterAllTablesFromMetastore()
+  }
 }
 
 object HiveMetastoreTypes extends RegexParsers {

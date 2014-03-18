@@ -30,6 +30,7 @@ import org.apache.spark.sql.catalyst.plans.logical.{Subquery, LogicalPlan}
 import org.apache.spark.sql.catalyst.rules.RuleExecutor
 import org.apache.spark.sql.columnar.InMemoryColumnarTableScan
 import org.apache.spark.sql.execution._
+import org.apache.spark.sql.catalyst.types.DataType
 
 /**
  * <span class="badge" style="float: right; background-color: darkblue;">ALPHA COMPONENT</span>
@@ -80,12 +81,28 @@ class SQLContext(@transient val sparkContext: SparkContext)
     new SchemaRDD(this, SparkLogicalPlan(ExistingRdd.fromProductRdd(rdd)))
 
   /**
-   * Loads a parequet file, returning the result as a [[SchemaRDD]].
+   * Creates an empty SchemaRDD backed by a ParquetRelation.
+   *
+   * @group userf
+   * @param path The data directory.
+   * @param schema The schema given as (variable name, data type) pairs.
+   * @return The SchemaRDD.
+   */
+  // TODO: this should be kept for a later Hive-compatible CREATE TABLE sql command
+  def createParquetFile(path: String, schema: (Tuple2[String, DataType])*): SchemaRDD = {
+    val attributes = schema.map(t => new AttributeReference(t._1, t._2)())
+    new SchemaRDD(
+      this,
+      parquet.ParquetRelation.createEmpty(path, attributes, sparkContext.hadoopConfiguration))
+  }
+
+  /**
+   * Loads a Parquet file, returning the result as a [[SchemaRDD]].
    *
    * @group userf
    */
   def parquetFile(path: String): SchemaRDD =
-    new SchemaRDD(this, parquet.ParquetRelation("ParquetFile", path))
+    new SchemaRDD(this, parquet.ParquetRelation(path))
 
 
   /**
@@ -140,6 +157,11 @@ class SQLContext(@transient val sparkContext: SparkContext)
       case plan => throw new IllegalArgumentException(s"Table $tableName is not cached: $plan")
     }
   }
+
+  /**
+   * Resets the context by unregistering all tables from the catalog.
+   */
+  def reset(): Unit = catalog.unregisterAllTables()
 
   protected[sql] class SparkPlanner extends SparkStrategies {
     val sparkContext = self.sparkContext

@@ -67,5 +67,12 @@ object RDDRelation {
     // These files can also be registered as tables.
     parquetFile.registerAsTable("parquetFile")
     sql("SELECT * FROM parquetFile").collect().foreach(println)
+
+    // Coming to a place near you soon..
+    // Parquet files can be also appended to via SQL.
+    // sql("INSERT INTO TABLE parquetFile SELECT * FROM records")
+
+    // val doubleCount = sql("SELECT COUNT(*) FROM parquetFile").collect().head.getInt(0)
+    // println(s"COUNT(*) after INSERT INTO: $doubleCount")
   }
 }

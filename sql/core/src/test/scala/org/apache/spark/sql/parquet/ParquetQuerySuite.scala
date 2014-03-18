@@ -19,27 +19,32 @@ package org.apache.spark.sql.parquet
 
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 
-import org.apache.hadoop.fs.{FileSystem, Path}
-import org.apache.hadoop.mapreduce.Job
-import parquet.hadoop.ParquetFileWriter
-import parquet.hadoop.util.ContextUtil
-import parquet.schema.MessageTypeParser
-
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.catalyst.expressions.Row
-import org.apache.spark.sql.catalyst.util.getTempFilePath
 import org.apache.spark.sql.test.TestSQLContext
+import org.apache.spark.sql.catalyst.util.getTempFilePath
+import org.apache.spark.sql.catalyst.expressions.Row
 
 // Implicits
 import org.apache.spark.sql.test.TestSQLContext._
 
+import org.apache.hadoop.mapreduce.Job
+import org.apache.hadoop.fs.{Path, FileSystem}
+
+import parquet.schema.MessageTypeParser
+import parquet.hadoop.ParquetFileWriter
+import parquet.hadoop.util.ContextUtil
+
+import TestSQLContext._
+import org.apache.spark.util.Utils
+
+case class TestRDDEntry(key: Int, value: String)
+
 class ParquetQuerySuite extends FunSuite with BeforeAndAfterAll {
   override def beforeAll() {
-    ParquetTestData.writeFile()
+    ParquetTestData.writeFile
   }
 
   override def afterAll() {
-    ParquetTestData.testFile.delete()
+    Utils.deleteRecursively(ParquetTestData.testDir)
   }
 
   test("self-join parquet files") {
@@ -55,11 +60,18 @@ class ParquetQuerySuite extends FunSuite with BeforeAndAfterAll {
       case Seq(_, _) => // All good
     }
 
-    // TODO: We can't run this query as it NPEs
+    val result = query.collect()
+    assert(result.size === 9, "self-join result has incorrect size")
+    assert(result(0).size === 12, "result row has incorrect size")
+    result.zipWithIndex.foreach {
+      case (row, index) => row.zipWithIndex.foreach {
+        case (field, column) => assert(field != null, s"self-join contains null value in row $index field $column")
+      }
+    }
   }
 
   test("Import of simple Parquet file") {
-    val result = getRDD(ParquetTestData.testData).collect()
+    val result = parquetFile(ParquetTestData.testDir.toString).collect()
     assert(result.size === 15)
     result.zipWithIndex.foreach {
       case (row, index) => {
@@ -125,20 +137,19 @@ class ParquetQuerySuite extends FunSuite with BeforeAndAfterAll {
     fs.delete(path, true)
   }
 
-  /**
-   * Computes the given [[ParquetRelation]] and returns its RDD.
-   *
-   * @param parquetRelation The Parquet relation.
-   * @return An RDD of Rows.
-   */
-  private def getRDD(parquetRelation: ParquetRelation): RDD[Row] = {
-    val scanner = new ParquetTableScan(
-      parquetRelation.output,
-      parquetRelation,
-      None)(TestSQLContext.sparkContext)
-    scanner
-      .execute
-      .map(_.copy())
+  test("Creating case class RDD table") {
+    TestSQLContext.sparkContext.parallelize((1 to 100))
+      .map(i => TestRDDEntry(i, s"val_$i"))
+      .registerAsTable("tmp")
+    val rdd = sql("SELECT * FROM tmp").collect().sortBy(_.getInt(0))
+    var counter = 1
+    rdd.foreach {
+      // '===' does not like string comparison?
+      row: Row => {
+        assert(row.getString(1).equals(s"val_$counter"), s"row $counter value ${row.getString(1)} does not match val_$counter")
+        counter = counter + 1
+      }
+    }
   }
 }
 

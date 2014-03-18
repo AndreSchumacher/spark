@@ -31,19 +31,35 @@ trait Catalog {
     alias: Option[String] = None): LogicalPlan
 
   def registerTable(databaseName: Option[String], tableName: String, plan: LogicalPlan): Unit
+
   def unregisterTable(databaseName: Option[String], tableName: String): Unit
+
+  def unregisterAllTables(): Unit
 }
 
 class SimpleCatalog extends Catalog {
   val tables = new mutable.HashMap[String, LogicalPlan]()
 
-  def registerTable(databaseName: Option[String],tableName: String, plan: LogicalPlan): Unit = {
+  override def registerTable(
+      databaseName: Option[String],
+      tableName: String,
+      plan: LogicalPlan): Unit = {
     tables += ((tableName, plan))
   }
 
-  def unregisterTable(databaseName: Option[String], tableName: String) = { tables -= tableName }
+  override def unregisterTable(
+      databaseName: Option[String],
+      tableName: String) = {
+    tables -= tableName
+  }
 
-  def lookupRelation(
+  override def unregisterAllTables() = {
+    for (entry <- tables) {
+      unregisterTable(Some(""), entry._1)
+    }
+  }
+
+  override def lookupRelation(
       databaseName: Option[String],
       tableName: String,
       alias: Option[String] = None): LogicalPlan = {
@@ -89,8 +105,19 @@ trait OverrideCatalog extends Catalog {
     overrides.put((databaseName, tableName), plan)
   }
 
-  override def unregisterTable(databaseName: Option[String], tableName: String): Unit = {
-    overrides.remove((databaseName, tableName))
+  abstract override def unregisterTable(databaseName: Option[String], tableName: String): Unit = {
+    if (overrides.contains((databaseName, tableName))) {
+      overrides -= ((databaseName, tableName))
+    } else {
+      super.unregisterTable(databaseName, tableName)
+    }
+  }
+
+  abstract override def unregisterAllTables() = {
+    for (entry <- overrides) {
+      unregisterTable(entry._1._1, entry._1._2)
+    }
+    super.unregisterAllTables()
   }
 }
 
@@ -99,18 +126,27 @@ trait OverrideCatalog extends Catalog {
  * relations are already filled in and the analyser needs only to resolve attribute references.
  */
 object EmptyCatalog extends Catalog {
-  def lookupRelation(
+  override def lookupRelation(
     databaseName: Option[String],
     tableName: String,
     alias: Option[String] = None) = {
     throw new UnsupportedOperationException
   }
 
-  def registerTable(databaseName: Option[String], tableName: String, plan: LogicalPlan): Unit = {
+  override def registerTable(
+      databaseName: Option[String],
+      tableName: String,
+      plan: LogicalPlan): Unit = {
     throw new UnsupportedOperationException
   }
 
-  def unregisterTable(databaseName: Option[String], tableName: String): Unit = {
+  override def unregisterTable(
+      databaseName: Option[String],
+      tableName: String): Unit = {
+    throw new UnsupportedOperationException
+  }
+
+  override def unregisterAllTables(): Unit = {
     throw new UnsupportedOperationException
   }
 }

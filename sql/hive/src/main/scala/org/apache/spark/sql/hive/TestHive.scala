@@ -278,7 +278,7 @@ class TestHiveContext(sc: SparkContext) extends LocalHiveContext(sc) {
    * Resets the test instance by deleting any tables that have been created.
    * TODO: also clear out UDFs, views, etc.
    */
-  def reset() {
+  override def reset() {
     try {
       // HACK: Hive is too noisy by default.
       org.apache.log4j.LogManager.getCurrentLoggers.foreach { logger =>
@@ -295,23 +295,7 @@ class TestHiveContext(sc: SparkContext) extends LocalHiveContext(sc) {
       runSqlHive("set hive.metastore.partition.name.whitelist.pattern=.*")
 
       loadedTables.clear()
-      catalog.client.getAllTables("default").foreach { t =>
-        logger.debug(s"Deleting table $t")
-        val table = catalog.client.getTable("default", t)
-
-        catalog.client.getIndexes("default", t, 255).foreach { index =>
-          catalog.client.dropIndex("default", t, index.getIndexName, true)
-        }
-
-        if (!table.isIndexTable) {
-          catalog.client.dropTable("default", t)
-        }
-      }
-
-      catalog.client.getAllDatabases.filterNot(_ == "default").foreach { db =>
-        logger.debug(s"Dropping Database: $db")
-        catalog.client.dropDatabase(db, true, false, true)
-      }
+      catalog.unregisterAllTables()
 
       FunctionRegistry.getFunctionNames.filterNot(originalUdfs.contains(_)).foreach { udfName =>
         FunctionRegistry.unregisterTemporaryUDF(udfName)
