@@ -158,11 +158,6 @@ class SQLContext(@transient val sparkContext: SparkContext)
     }
   }
 
-  /**
-   * Resets the context by unregistering all tables from the catalog.
-   */
-  def reset(): Unit = catalog.unregisterAllTables()
-
   protected[sql] class SparkPlanner extends SparkStrategies {
     val sparkContext = self.sparkContext
 

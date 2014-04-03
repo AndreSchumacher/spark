@@ -54,9 +54,7 @@ class SimpleCatalog extends Catalog {
   }
 
   override def unregisterAllTables() = {
-    for (entry <- tables) {
-      unregisterTable(Some(""), entry._1)
-    }
+    tables.clear()
   }
 
   override def lookupRelation(
@@ -105,19 +103,12 @@ trait OverrideCatalog extends Catalog {
     overrides.put((databaseName, tableName), plan)
   }
 
-  abstract override def unregisterTable(databaseName: Option[String], tableName: String): Unit = {
-    if (overrides.contains((databaseName, tableName))) {
-      overrides -= ((databaseName, tableName))
-    } else {
-      super.unregisterTable(databaseName, tableName)
-    }
+  override def unregisterTable(databaseName: Option[String], tableName: String): Unit = {
+    overrides.remove((databaseName, tableName))
   }
 
-  abstract override def unregisterAllTables() = {
-    for (entry <- overrides) {
-      unregisterTable(entry._1._1, entry._1._2)
-    }
-    super.unregisterAllTables()
+  override def unregisterAllTables(): Unit = {
+    overrides.clear()
   }
 }
 
@@ -126,27 +117,20 @@ trait OverrideCatalog extends Catalog {
  * relations are already filled in and the analyser needs only to resolve attribute references.
  */
 object EmptyCatalog extends Catalog {
-  override def lookupRelation(
+  def lookupRelation(
     databaseName: Option[String],
     tableName: String,
     alias: Option[String] = None) = {
     throw new UnsupportedOperationException
   }
 
-  override def registerTable(
-      databaseName: Option[String],
-      tableName: String,
-      plan: LogicalPlan): Unit = {
+  def registerTable(databaseName: Option[String], tableName: String, plan: LogicalPlan): Unit = {
     throw new UnsupportedOperationException
   }
 
-  override def unregisterTable(
-      databaseName: Option[String],
-      tableName: String): Unit = {
+  def unregisterTable(databaseName: Option[String], tableName: String): Unit = {
     throw new UnsupportedOperationException
   }
 
-  override def unregisterAllTables(): Unit = {
-    throw new UnsupportedOperationException
-  }
+  override def unregisterAllTables(): Unit = {}
 }
