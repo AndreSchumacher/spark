@@ -245,25 +245,33 @@ private[parquet] class RowWriteSupport extends WriteSupport[Row] with Logging {
   // https://issues.apache.org/jira/browse/SPARK-1649
   private[parquet] def writeMap(
       schema: MapType,
-      map: CatalystConverter.MapScalaType[_, _]): Unit = {
-    writer.startGroup()
-    if (map.size > 0) {
-      writer.startField(CatalystConverter.MAP_SCHEMA_NAME, 0)
+      originalMap: CatalystConverter.MapScalaType[_, _]): Unit = {
+    try {
+      // HACK: What is a null value?
+      val map = originalMap.filterNot { case (_, b) => b == null }
       writer.startGroup()
-      writer.startField(CatalystConverter.MAP_KEY_SCHEMA_NAME, 0)
-      for(key <- map.keys) {
-        writeValue(schema.keyType, key)
+      if (map.size > 0) {
+        writer.startField(CatalystConverter.MAP_SCHEMA_NAME, 0)
+        writer.startGroup()
+        writer.startField(CatalystConverter.MAP_KEY_SCHEMA_NAME, 0)
+        for (key <- map.keys) {
+          writeValue(schema.keyType, key)
+        }
+        writer.endField(CatalystConverter.MAP_KEY_SCHEMA_NAME, 0)
+        writer.startField(CatalystConverter.MAP_VALUE_SCHEMA_NAME, 1)
+        for (value <- map.values) {
+          writeValue(schema.valueType, value)
+        }
+        writer.endField(CatalystConverter.MAP_VALUE_SCHEMA_NAME, 1)
+        writer.endGroup()
+        writer.endField(CatalystConverter.MAP_SCHEMA_NAME, 0)
       }
-      writer.endField(CatalystConverter.MAP_KEY_SCHEMA_NAME, 0)
-      writer.startField(CatalystConverter.MAP_VALUE_SCHEMA_NAME, 1)
-      for(value <- map.values) {
-        writeValue(schema.valueType, value)
-      }
-      writer.endField(CatalystConverter.MAP_VALUE_SCHEMA_NAME, 1)
       writer.endGroup()
-      writer.endField(CatalystConverter.MAP_SCHEMA_NAME, 0)
+    } catch {
+      case e: Exception =>
+        log.error(s"Failed to process map $originalMap")
+        throw e
     }
-    writer.endGroup()
   }
 }
 
