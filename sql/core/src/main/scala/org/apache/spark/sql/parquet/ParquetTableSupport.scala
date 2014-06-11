@@ -226,8 +226,9 @@ private[parquet] class RowWriteSupport extends WriteSupport[Row] with Logging {
   // https://issues.apache.org/jira/browse/SPARK-1649
   private[parquet] def writeArray(
       schema: ArrayType,
-      array: CatalystConverter.ArrayScalaType[_]): Unit = {
+      originalArray: CatalystConverter.ArrayScalaType[_]): Unit = {
     val elementType = schema.elementType
+    val array = originalArray.filterNot(_ == null)
     writer.startGroup()
     if (array.size > 0) {
       writer.startField(CatalystConverter.ARRAY_ELEMENTS_SCHEMA_NAME, 0)
